@@ -460,25 +460,25 @@
     }
 
     // 從 Google Sheets 讀取最新預約資料
-    async function fetchCloudData() {
-      if (!GOOGLE_SCRIPT_URL) return;
-      showLoading(true);
-      try {
-        const res = await fetch(GOOGLE_SCRIPT_URL);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          bookings = data;
-          localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
-        }
-      } catch (err) {
-        console.error("雲端讀取失敗:", err);
-        const stored = localStorage.getItem("ngo_room_bookings");
-        bookings = stored ? JSON.parse(stored) : [];
-      } finally {
-        showLoading(false);
-        refreshUI();
-      }
+ async function fetchCloudData() {
+  if (!GOOGLE_SCRIPT_URL) return;
+  showLoading(true);
+  try {
+    // 加上 ?t=時間戳記 避開快取
+    const cacheBuster = "?t=" + Date.now();
+    const res = await fetch(GOOGLE_SCRIPT_URL + cacheBuster);
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      bookings = data;
+      localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
     }
+  } catch (err) {
+    console.error("雲端讀取失敗:", err);
+  } finally {
+    showLoading(false);
+    refreshUI();
+  }
+}
 
     // 處理表單提交（觸發原生 Form 提交至隱藏 iframe）
     function handleFormSubmit(e) {
