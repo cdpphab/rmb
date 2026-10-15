@@ -8,7 +8,7 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background-color: #f8fafc; color: #1e293b; padding-bottom: 40px; }
     header { background-color: #4338ca; color: white; padding: 18px; text-align: center; font-weight: bold; font-size: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .container { max-width: 600px; margin: 20px auto; padding: 0 16px; }
+    .container { max-width: 650px; margin: 20px auto; padding: 0 16px; }
     .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     h2 { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
     .input-group { margin-bottom: 14px; }
@@ -16,8 +16,11 @@
     input, select { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none; background: white; }
     input:focus, select:focus { border-color: #4338ca; }
     .checkbox-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 6px; }
-    .checkbox-item { display: flex; align-items: center; gap: 6px; border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .checkbox-item { display: flex; align-items: center; justify-content: space-between; border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; font-size: 13px; cursor: pointer; background: white; }
     .checkbox-item input { width: auto; margin: 0; }
+    .checkbox-item.disabled { background-color: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; cursor: not-allowed; }
+    .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+    .badge-taken { background: #fee2e2; color: #dc2626; }
     .submit-btn { width: 100%; padding: 14px; background-color: #4338ca; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
     .submit-btn:hover { background-color: #3730a3; }
   </style>
@@ -27,7 +30,6 @@
   <header>CDP 場地預約系統</header>
 
   <div class="container">
-    <!-- 原生 HTML 表單：直接發送 POST 至 Google Apps Script -->
     <form id="booking-form" method="POST" action="https://script.google.com/macros/s/AKfycbyavh9dlml8Lu6vhzpna49D2ZYaZSQkbC9ceBvBppxRBdwsuhJiPiQVSpLYALtEH_15xQ/exec">
       
       <div class="card">
@@ -35,7 +37,7 @@
         
         <div class="input-group">
           <label>選擇場地</label>
-          <select name="room" required>
+          <select name="room" id="booking-room" onchange="renderTimeSlots()" required>
             <option value="大廳">大廳 (Main Hall)</option>
             <option value="活動室">活動室 (Activity Room)</option>
           </select>
@@ -43,22 +45,116 @@
 
         <div class="input-group">
           <label>選擇日期</label>
-          <input type="date" name="date" id="booking-date" required>
+          <input type="date" name="date" id="booking-date" onchange="renderTimeSlots()" required>
         </div>
       </div>
 
       <div class="card">
-        <h2>2. 選擇時段 (可多選)</h2>
-        <div class="checkbox-group">
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="09:00-10:00"> 09:00-10:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="10:00-11:00"> 10:00-11:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="11:00-12:00"> 11:00-12:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="12:00-13:00"> 12:00-13:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="13:00-14:00"> 13:00-14:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="14:00-15:00"> 14:00-15:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="15:00-16:00"> 15:00-16:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="16:00-17:00"> 16:00-17:00</label>
-          <label class="checkbox-item"><input type="checkbox" name="slots_arr" value="17:00-18:00"> 17:00-18:00</label>
+        <h2>2. 選擇時段 (已被預約的時段會自動鎖定)</h2>
+        <div class="checkbox-group" id="slots-container"></div>
+        <input type="hidden" name="slots" id="slots-hidden">
+        <input type="hidden" name="id" id="id-hidden">
+      </div>
+
+      <div class="card">
+        <h2>3. 填寫申請人資料</h2>
+        <div class="input-group">
+          <label>申請人姓名 *</label>
+          <input type="text" name="name" required placeholder="例如：張大明">
         </div>
-        <!-- 隱藏欄位用於拼接時段 -->
-        <input type="hidden" name="
+        <div class="input-group">
+          <label>聯絡電話 *</label>
+          <input type="tel" name="phone" required placeholder="例如：91234567">
+        </div>
+        <div class="input-group">
+          <label>團體 / 機構名稱</label>
+          <input type="text" name="org" placeholder="例如：個人 / 社區義工隊">
+        </div>
+        <div class="input-group">
+          <label>活動用途 *</label>
+          <input type="text" name="purpose" required placeholder="例如：社區聚會、工作坊">
+        </div>
+        <button type="submit" class="submit-btn">確認提交預約 (同步至 Google Sheet)</button>
+      </div>
+
+    </form>
+  </div>
+
+  <script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyavh9dlml8Lu6vhzpna49D2ZYaZSQkbC9ceBvBppxRBdwsuhJiPiQVSpLYALtEH_15xQ/exec";
+    const SLOTS = ["09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00", "16:00-17:00", "17:00-18:00"];
+    let existingBookings = [];
+
+    // 取得雲端已預約紀錄
+    async function fetchExistingBookings() {
+      try {
+        const res = await fetch(SCRIPT_URL);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          existingBookings = data;
+          renderTimeSlots();
+        }
+      } catch (e) {
+        console.error("雲端預約資料載入失敗:", e);
+      }
+    }
+
+    // 動態繪製時段，並禁用已被預約的時段
+    function renderTimeSlots() {
+      const selectedRoom = document.getElementById('booking-room').value;
+      const selectedDate = document.getElementById('booking-date').value;
+      const container = document.getElementById('slots-container');
+      container.innerHTML = '';
+
+      if (!selectedDate) return;
+
+      // 篩選出該房間與日期的已佔用時段
+      const takenSlots = existingBookings
+        .filter(b => b.room === selectedRoom && b.date === selectedDate)
+        .flatMap(b => Array.isArray(b.slots) ? b.slots : String(b.slots || '').split(';'));
+
+      SLOTS.forEach(slot => {
+        const isTaken = takenSlots.includes(slot);
+        const label = document.createElement('label');
+        
+        if (isTaken) {
+          label.className = 'checkbox-item disabled';
+          label.innerHTML = `<span>${slot}</span><span class="badge badge-taken">已被預約</span>`;
+        } else {
+          label.className = 'checkbox-item';
+          label.innerHTML = `<span>${slot}</span><input type="checkbox" name="slots_arr" value="${slot}">`;
+        }
+        container.appendChild(label);
+      });
+    }
+
+    // 初始化日期與載入數據
+    function init() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+
+      const dateInput = document.getElementById('booking-date');
+      dateInput.value = todayStr;
+      dateInput.min = todayStr;
+
+      fetchExistingBookings();
+    }
+
+    document.getElementById('booking-form').onsubmit = function() {
+      const checked = Array.from(document.querySelectorAll('input[name="slots_arr"]:checked')).map(cb => cb.value);
+      if (checked.length === 0) {
+        alert("請至少選擇一個可預約的時段！");
+        return false;
+      }
+      document.getElementById('slots-hidden').value = checked.join(';');
+      document.getElementById('id-hidden').value = "BK" + Date.now().toString().slice(-6);
+      return true;
+    };
+
+    window.onload = init;
+  </script>
+</body>
+</html>
