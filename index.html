@@ -796,4 +796,242 @@
     }
 
     function shiftWeeklyDate(days) {
-      weeklyStartDate
+      weeklyStartDate.setDate(weeklyStartDate.getDate() + days);
+      renderAdminWeekly();
+    }
+
+    function resetWeeklyToToday() {
+      weeklyStartDate = new Date();
+      renderAdminWeekly();
+    }
+
+    function renderAdminWeekly() {
+      const weekDays = [];
+      const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+      const start = new Date(weeklyStartDate);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        weekDays.push({
+          dateStr: formatDateObj(d),
+          dayName: `星期${dayNames[d.getDay()]}`,
+          isToday: formatDateObj(d) === getTodayDateString()
+        });
+      }
+
+      document.getElementById('weekly-display-date-title').innerText = `📅 一星期排程總覽 (${weekDays[0].dateStr} 至 ${weekDays[6].dateStr})`;
+
+      const container = document.getElementById('weekly-schedule-container');
+      container.innerHTML = '';
+
+      ["大廳", "活動室"].forEach(room => {
+        const roomBox = document.createElement('div');
+        roomBox.className = "space-y-2";
+        let html = `
+          <div class="flex items-center gap-2 font-bold text-slate-800 text-sm border-b border-slate-200 pb-2">
+            <span class="p-1.5 rounded-lg ${room === '大廳' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}">
+              <i data-lucide="${room === '大廳' ? 'landmark' : 'users'}" class="w-4 h-4"></i>
+            </span>
+            ${room} - 7天預約概況
+          </div>
+          <div class="overflow-x-auto custom-scrollbar">
+            <table class="w-full border-collapse min-w-[850px] border border-slate-200 rounded-xl overflow-hidden text-xs">
+              <thead><tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200"><th class="p-2 text-left w-24">日期</th>`;
+
+        TIME_SLOTS.forEach(slot => { html += `<th class="p-2 text-center">${slot.split('-')[0]}</th>`; });
+        html += `</tr></thead><tbody class="divide-y divide-slate-200 bg-white">`;
+
+        weekDays.forEach(wd => {
+          html += `<tr class="${wd.isToday ? 'bg-indigo-50/40' : ''}">
+            <td class="p-2 font-bold ${wd.isToday ? 'text-indigo-600' : 'text-slate-700'} border-r border-slate-200">
+              <div>${wd.dateStr.slice(5)}</div>
+              <div class="text-[10px] text-slate-400 font-normal">${wd.dayName}</div>
+            </td>`;
+
+          TIME_SLOTS.forEach(slot => {
+            const booking = bookings.find(b => {
+              const roomMatch = String(b.room).trim() === room;
+              const dateMatch = String(b.date).trim() === wd.dateStr;
+              const slotMatch = parseSlots(b.slots).includes(slot);
+              return roomMatch && dateMatch && slotMatch;
+            });
+
+            if (booking) {
+              html += `<td class="p-1 text-center"><div title="${booking.name} (${booking.org})" class="p-1.5 rounded bg-indigo-600 text-white text-[10px] font-medium leading-tight shadow-sm truncate max-w-[85px] mx-auto">${booking.name}</div></td>`;
+            } else {
+              html += `<td class="p-1 text-center"><div class="p-1.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/50 text-[10px]">空閒</div></td>`;
+            }
+          });
+          html += `</tr>`;
+        });
+
+        html += `</tbody></table></div>`;
+        roomBox.innerHTML = html;
+        container.appendChild(roomBox);
+      });
+      lucide.createIcons();
+    }
+
+    function shiftTimelineDate(days) {
+      const input = document.getElementById('admin-timeline-date');
+      const curDate = new Date(input.value || getTodayDateString());
+      curDate.setDate(curDate.getDate() + days);
+      input.value = formatDateObj(curDate);
+      renderAdminTimeline();
+    }
+
+    function renderAdminTimeline() {
+      const dateVal = document.getElementById('admin-timeline-date').value || getTodayDateString();
+      document.getElementById('timeline-display-date-title').innerText = `📅 ${dateVal} 時間線排程狀況`;
+
+      const tbody = document.getElementById('timeline-table-body');
+      tbody.innerHTML = '';
+
+      ["大廳", "活動室"].forEach(room => {
+        const row = document.createElement('tr');
+        row.className = "hover:bg-slate-50/50 transition-colors";
+        let rowHtml = `<td class="p-3 font-bold text-xs text-slate-800 border-r border-slate-100">${room}</td>`;
+
+        TIME_SLOTS.forEach(slot => {
+          const booking = bookings.find(b => {
+            const roomMatch = String(b.room).trim() === room;
+            const dateMatch = String(b.date).trim() === dateVal;
+            const slotMatch = parseSlots(b.slots).includes(slot);
+            return roomMatch && dateMatch && slotMatch;
+          });
+
+          if (booking) {
+            rowHtml += `<td class="p-1.5 text-center"><div class="p-2 rounded-lg bg-indigo-600 text-white text-[10px] font-semibold leading-tight shadow-sm truncate max-w-[90px]"><div>${booking.name}</div><div class="text-[9px] text-indigo-200 truncate">${booking.org}</div></div></td>`;
+          } else {
+            rowHtml += `<td class="p-1.5 text-center"><div class="p-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[10px] font-medium">空閒</div></td>`;
+          }
+        });
+
+        row.innerHTML = rowHtml;
+        tbody.appendChild(row);
+      });
+    }
+
+    function renderAdminBookingsList() {
+      const search = document.getElementById('admin-search-input').value.toLowerCase().trim();
+      const roomFilter = document.getElementById('admin-room-filter').value;
+      const datePicker = document.getElementById('admin-date-picker').value;
+      const dateFilter = document.getElementById('admin-date-filter').value;
+      const today = getTodayDateString();
+
+      let filtered = [...bookings];
+      if (roomFilter !== 'ALL') filtered = filtered.filter(b => String(b.room).trim() === roomFilter);
+      if (datePicker) filtered = filtered.filter(b => String(b.date).trim() === datePicker);
+      else if (dateFilter === 'UPCOMING') filtered = filtered.filter(b => String(b.date).trim() >= today);
+
+      if (search) {
+        filtered = filtered.filter(b => 
+          String(b.name).toLowerCase().includes(search) ||
+          String(b.phone).includes(search) ||
+          String(b.org).toLowerCase().includes(search) ||
+          String(b.id).toLowerCase().includes(search)
+        );
+      }
+
+      filtered.sort((a, b) => {
+        const aSlots = parseSlots(a.slots);
+        const bSlots = parseSlots(b.slots);
+        const aTime = String(a.date).trim() + 'T' + (aSlots[0] ? aSlots[0].split('-')[0] : '00:00');
+        const bTime = String(b.date).trim() + 'T' + (bSlots[0] ? bSlots[0].split('-')[0] : '00:00');
+        return new Date(bTime) - new Date(aTime);
+      });
+
+      document.getElementById('filtered-count-badge').innerText = `已篩選共 ${filtered.length} 項紀錄`;
+
+      const container = document.getElementById('admin-bookings-list');
+      container.innerHTML = '';
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs">無符合條件之預約紀錄</div>`;
+        return;
+      }
+
+      filtered.forEach(item => {
+        const slotsArr = parseSlots(item.slots);
+        const card = document.createElement('div');
+        card.className = "p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-200 transition-all shadow-sm space-y-2";
+        card.innerHTML = `
+          <div class="flex justify-between items-start flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-sm text-slate-800">${item.room}</span>
+              <span class="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                <i data-lucide="calendar" class="w-3 h-3"></i> ${item.date}
+              </span>
+            </div>
+            <div class="flex items-center gap-2 no-print">
+              <a href="tel:${item.phone}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors">
+                <i data-lucide="phone" class="w-3 h-3"></i> 致電
+              </a>
+            </div>
+          </div>
+          <div class="text-xs text-slate-600 grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+            <p><strong class="text-slate-800">時段：</strong> <span class="font-semibold text-indigo-700">${slotsArr.join(', ')}</span></p>
+            <p><strong class="text-slate-800">申請人：</strong> ${item.name} (${item.phone}) | <strong>機構：</strong> ${item.org}</p>
+            <p class="md:col-span-2"><strong class="text-slate-800">用途：</strong> ${item.purpose}</p>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    function updateAdminStats() {
+      const today = getTodayDateString();
+      document.getElementById('stat-total').innerText = bookings.length;
+      document.getElementById('stat-today').innerText = bookings.filter(b => String(b.date).trim() === today).length;
+      document.getElementById('stat-hall').innerText = bookings.filter(b => String(b.room).trim() === '大廳').length;
+      document.getElementById('stat-room').innerText = bookings.filter(b => String(b.room).trim() === '活動室').length;
+    }
+
+    function exportToCSV() {
+      if (bookings.length === 0) {
+        showAlertModal("目前無任何預約數據可供匯出。");
+        return;
+      }
+      let csv = "\uFEFF預約編號,房間,預約日期,預約時段,申請人姓名,聯絡電話,機構/團體,活動用途,建立時間\n";
+      bookings.forEach(b => {
+        const slotsArr = parseSlots(b.slots);
+        csv += `"${b.id}","${b.room}","${b.date}","${slotsArr.join(';')}","${b.name}","${b.phone}","${b.org}","${b.purpose}","${b.createdAt}"\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `CDP_Room_Bookings_${getTodayDateString()}.csv`;
+      link.click();
+    }
+
+    function showAlertModal(msg) {
+      document.getElementById('alert-title').innerText = "提示";
+      document.getElementById('alert-message').innerText = msg;
+      document.getElementById('alert-actions').innerHTML = `<button onclick="closeAlertModal()" class="w-full py-2.5 bg-indigo-600 text-white text-xs font-semibold rounded-xl">確定</button>`;
+      document.getElementById('modal-alert').classList.remove('hidden');
+    }
+
+    function closeAlertModal() {
+      document.getElementById('modal-alert').classList.add('hidden');
+    }
+
+    // 初始化日期並同步渲染時段按鈕
+    function initDate() {
+      const todayStr = getTodayDateString();
+      const dateInput = document.getElementById('booking-date');
+      if (dateInput) {
+        dateInput.value = todayStr;
+        dateInput.min = todayStr;
+      }
+      renderTimeSlots();
+    }
+
+    window.onload = () => {
+      initDate();
+      fetchCloudData();
+      lucide.createIcons();
+    };
+  </script>
+</body>
+</html>
