@@ -464,12 +464,27 @@
   if (!GOOGLE_SCRIPT_URL) return;
   showLoading(true);
   try {
-    // 加上 ?t=時間戳記 避開快取
-    const cacheBuster = "?t=" + Date.now();
-    const res = await fetch(GOOGLE_SCRIPT_URL + cacheBuster);
+    // 1. 強制加上時間戳，避開瀏覽器及 CDN 快取
+    const cacheUrl = GOOGLE_SCRIPT_URL + (GOOGLE_SCRIPT_URL.includes('?') ? '&' : '?') + "t=" + Date.now();
+    const res = await fetch(cacheUrl);
     const data = await res.json();
+    
     if (Array.isArray(data)) {
-      bookings = data;
+      // 2. 轉化日期格式，確保 YYYY-MM-DD 精準匹配
+      bookings = data.map(b => {
+        let cleanDate = String(b.date || '').trim();
+        // 若日期含有 T (如 2026-10-17T00:00:00.000Z)，只取前端 10 位 YYYY-MM-DD
+        if (cleanDate.includes('T')) {
+          cleanDate = cleanDate.split('T')[0];
+        }
+        return {
+          ...b,
+          room: String(b.room || '').trim(),
+          date: cleanDate,
+          slots: parseSlots(b.slots)
+        };
+      });
+      // 清除舊快取並寫入新資料
       localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
     }
   } catch (err) {
