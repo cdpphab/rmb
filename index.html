@@ -150,7 +150,7 @@
         <div class="flex justify-between items-center mb-4">
           <h3 class="font-bold text-slate-800 text-md flex items-center gap-2">
             <i data-lucide="clock" class="w-5 h-5 text-indigo-600"></i>
-            選擇可預約時段 (可多選)
+            選擇可預約時段 (多選時須為連續時段)
           </h3>
           <button onclick="fetchCloudData()" class="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> 重新整理狀態
@@ -463,50 +463,57 @@
       return [];
     }
 
-    // 從 Google Sheets 讀取最新預約資料
-    // 從 Google Sheets 讀取最新預約資料
-async function fetchCloudData() {
-  if (!GOOGLE_SCRIPT_URL) return;
-  showLoading(true);
-  try {
-    const cacheUrl = GOOGLE_SCRIPT_URL + (GOOGLE_SCRIPT_URL.includes('?') ? '&' : '?') + "t=" + Date.now();
-    const res = await fetch(cacheUrl);
-    const data = await res.json();
-    
-    if (Array.isArray(data)) {
-      bookings = data.map(b => {
-        let cleanDate = String(b.date || '').trim();
-
-        // 核心修復：解析英文長日期 (如 "Thu Oct 15 2026 ...") 或 ISO 日期
-        if (cleanDate) {
-          const d = new Date(cleanDate);
-          if (!isNaN(d.getTime())) {
-            const yyyy = d.getFullYear();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            cleanDate = `${yyyy}-${mm}-${dd}`;
-          }
-        }
-
-        return {
-          ...b,
-          room: String(b.room || '').trim(),
-          date: cleanDate,
-          slots: parseSlots(b.slots)
-        };
-      });
-
-      console.log("【解析後數據】:", bookings);
-      localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
+    // 檢查時段陣列是否連續
+    function isSlotsContinuous(slotsArr) {
+      if (slotsArr.length <= 1) return true;
+      const sorted = [...slotsArr].sort((a, b) => TIME_SLOTS.indexOf(a) - TIME_SLOTS.indexOf(b));
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const idx1 = TIME_SLOTS.indexOf(sorted[i]);
+        const idx2 = TIME_SLOTS.indexOf(sorted[i + 1]);
+        if (idx2 - idx1 !== 1) return false;
+      }
+      return true;
     }
-  } catch (err) {
-    console.error("雲端讀取失敗:", err);
-  } finally {
-    showLoading(false);
-    refreshUI();
-  }
-}
 
+    // 從 Google Sheets 讀取最新預約資料
+    async function fetchCloudData() {
+      if (!GOOGLE_SCRIPT_URL) return;
+      showLoading(true);
+      try {
+        const cacheUrl = GOOGLE_SCRIPT_URL + (GOOGLE_SCRIPT_URL.includes('?') ? '&' : '?') + "t=" + Date.now();
+        const res = await fetch(cacheUrl);
+        const data = await res.json();
+        
+        if (Array.isArray(data)) {
+          bookings = data.map(b => {
+            let cleanDate = String(b.date || '').trim();
+            // 解析英文長日期 (如 "Thu Oct 15 2026 ...") 或 ISO 日期
+            if (cleanDate) {
+              const d = new Date(cleanDate);
+              if (!isNaN(d.getTime())) {
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                cleanDate = `${yyyy}-${mm}-${dd}`;
+              }
+            }
+            return {
+              ...b,
+              room: String(b.room || '').trim(),
+              date: cleanDate,
+              slots: parseSlots(b.slots)
+            };
+          });
+
+          localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
+        }
+      } catch (err) {
+        console.error("雲端讀取失敗:", err);
+      } finally {
+        showLoading(false);
+        refreshUI();
+      }
+    }
 
     // 處理表單提交
     function handleFormSubmit(e) {
@@ -522,9 +529,15 @@ async function fetchCloudData() {
         return;
       }
 
+      if (selectedSlots.length > 1 && !isSlotsContinuous(selectedSlots)) {
+        e.preventDefault();
+        showAlertModal("預約多個時段時，必須選擇連續的時間段！");
+        return;
+      }
+
       const bookingId = "BK" + Date.now().toString().slice(-6);
       const createdAt = new Date().toISOString();
-      const slotsStr = [...selectedSlots].sort().join(';');
+      const slotsStr = [...selectedSlots].sort((a, b) => TIME_SLOTS.indexOf(a) - TIME_SLOTS.indexOf(b)).join(';');
 
       document.getElementById('form-id').value = bookingId;
       document.getElementById('form-room').value = currentSelectedRoom;
@@ -536,7 +549,7 @@ async function fetchCloudData() {
         id: bookingId,
         room: currentSelectedRoom,
         date: dateVal,
-        slots: [...selectedSlots].sort(),
+        slots: [...selectedSlots].sort((a, b) => TIME_SLOTS.indexOf(a) - TIME_SLOTS.indexOf(b)),
         name: name,
         phone: phone,
         org: org,
@@ -702,12 +715,21 @@ async function fetchCloudData() {
       lucide.createIcons();
     }
 
+    // 點擊選擇/取消時段 (限制必須連續)
     function toggleSlot(slot) {
+      let nextSelected = [];
       if (selectedSlots.includes(slot)) {
-        selectedSlots = selectedSlots.filter(s => s !== slot);
+        nextSelected = selectedSlots.filter(s => s !== slot);
       } else {
-        selectedSlots.push(slot);
+        nextSelected = [...selectedSlots, slot];
       }
+
+      if (nextSelected.length > 1 && !isSlotsContinuous(nextSelected)) {
+        showAlertModal("預約多個時段時，必須選擇連續的時間段（例如：09:00-10:00 與 10:00-11:00）！");
+        return;
+      }
+
+      selectedSlots = nextSelected;
       renderTimeSlots();
     }
 
@@ -831,6 +853,7 @@ async function fetchCloudData() {
       renderAdminWeekly();
     }
 
+    // 一星期排程表 (連續時段自動合併長格)
     function renderAdminWeekly() {
       const weekDays = [];
       const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
@@ -861,10 +884,10 @@ async function fetchCloudData() {
             ${room} - 7天預約概況
           </div>
           <div class="overflow-x-auto custom-scrollbar">
-            <table class="w-full border-collapse min-w-[850px] border border-slate-200 rounded-xl overflow-hidden text-xs">
+            <table class="w-full border-collapse min-w-[850px] border border-slate-200 rounded-xl overflow-hidden text-xs table-fixed">
               <thead><tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200"><th class="p-2 text-left w-24">日期</th>`;
 
-        TIME_SLOTS.forEach(slot => { html += `<th class="p-2 text-center">${slot.split('-')[0]}</th>`; });
+        TIME_SLOTS.forEach(slot => { html += `<th class="p-2 text-center w-20">${slot.split('-')[0]}</th>`; });
         html += `</tr></thead><tbody class="divide-y divide-slate-200 bg-white">`;
 
         weekDays.forEach(wd => {
@@ -874,7 +897,9 @@ async function fetchCloudData() {
               <div class="text-[10px] text-slate-400 font-normal">${wd.dayName}</div>
             </td>`;
 
-          TIME_SLOTS.forEach(slot => {
+          let colIndex = 0;
+          while (colIndex < TIME_SLOTS.length) {
+            const slot = TIME_SLOTS[colIndex];
             const booking = bookings.find(b => {
               const roomMatch = String(b.room).trim() === room;
               const dateMatch = String(b.date).trim() === wd.dateStr;
@@ -883,11 +908,37 @@ async function fetchCloudData() {
             });
 
             if (booking) {
-              html += `<td class="p-1 text-center"><div title="${booking.name} (${booking.org})" class="p-1.5 rounded bg-indigo-600 text-white text-[10px] font-medium leading-tight shadow-sm truncate max-w-[85px] mx-auto">${booking.name}</div></td>`;
+              let spanCount = 1;
+              while (colIndex + spanCount < TIME_SLOTS.length) {
+                const nextSlot = TIME_SLOTS[colIndex + spanCount];
+                const isNextBookedBySame = parseSlots(booking.slots).includes(nextSlot);
+                if (isNextBookedBySame) {
+                  spanCount++;
+                } else {
+                  break;
+                }
+              }
+
+              const startT = slot.split('-')[0];
+              const endT = TIME_SLOTS[colIndex + spanCount - 1].split('-')[1];
+              const timeRangeStr = `${startT}-${endT}`;
+
+              html += `<td colspan="${spanCount}" class="p-1 text-center align-middle">
+                <div title="${booking.name} (${booking.org}) [${timeRangeStr}]" class="p-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold leading-tight shadow-sm flex items-center justify-center gap-1 w-full h-full">
+                  <span class="truncate">${booking.name}</span>
+                  ${spanCount > 1 ? `<span class="text-[9px] bg-indigo-700 px-1 py-0.5 rounded text-indigo-100 font-normal">(${timeRangeStr})</span>` : ''}
+                </div>
+              </td>`;
+
+              colIndex += spanCount;
             } else {
-              html += `<td class="p-1 text-center"><div class="p-1.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/50 text-[10px]">空閒</div></td>`;
+              html += `<td class="p-1 text-center align-middle">
+                <div class="p-1.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/50 text-[10px]">空閒</div>
+              </td>`;
+              colIndex++;
             }
-          });
+          }
+
           html += `</tr>`;
         });
 
