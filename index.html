@@ -136,12 +136,34 @@
           </div>
         </div>
 
+        <!-- 方便快速的日期選擇區塊 -->
         <div class="mt-6 pt-6 border-t border-slate-100">
           <label class="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
             <i data-lucide="calendar-days" class="w-4 h-4 text-indigo-600"></i>
             選擇日期
           </label>
-          <input type="date" id="booking-date" onchange="renderTimeSlots()" class="w-full sm:w-64 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800">
+          
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- 日期切換微調按鈕 -->
+            <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button type="button" onclick="shiftBookingDate(-1)" class="p-2 hover:bg-white rounded-lg text-slate-600 transition-colors" title="上一天">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+              </button>
+              <input type="date" id="booking-date" onchange="renderTimeSlots()" class="p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 text-sm font-medium">
+              <button type="button" onclick="shiftBookingDate(1)" class="p-2 hover:bg-white rounded-lg text-slate-600 transition-colors" title="下一天">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <!-- 常用快捷按鈕 -->
+            <div class="flex flex-wrap gap-1.5 text-xs">
+              <button type="button" onclick="setQuickDate(0)" class="px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl border border-indigo-200/60 transition-colors">今日</button>
+              <button type="button" onclick="setQuickDate(1)" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors">明日</button>
+              <button type="button" onclick="setQuickDate(2)" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors">後天</button>
+              <button type="button" onclick="setWeekendQuickDate(6)" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors">本週六</button>
+              <button type="button" onclick="setWeekendQuickDate(0)" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors">本週日</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -473,6 +495,46 @@
         if (idx2 - idx1 !== 1) return false;
       }
       return true;
+    }
+
+    // 上一天 / 下一天 切換
+    function shiftBookingDate(days) {
+      const input = document.getElementById('booking-date');
+      const curDate = new Date(input.value || getTodayDateString());
+      curDate.setDate(curDate.getDate() + days);
+      
+      const todayStr = getTodayDateString();
+      const targetStr = formatDateObj(curDate);
+      
+      if (targetStr < todayStr) {
+        showAlertModal("無法選擇過去的日期！");
+        return;
+      }
+      
+      input.value = targetStr;
+      selectedSlots = [];
+      renderTimeSlots();
+    }
+
+    // 快選：今日 (+0)、明日 (+1)、後天 (+2)
+    function setQuickDate(offsetDays) {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      document.getElementById('booking-date').value = formatDateObj(d);
+      selectedSlots = [];
+      renderTimeSlots();
+    }
+
+    // 快選：本週六 / 本週日
+    function setWeekendQuickDate(targetDay) { // 6 = 週六, 0 = 週日
+      const d = new Date();
+      const currentDay = d.getDay();
+      let diff = targetDay - currentDay;
+      if (diff < 0) diff += 7;
+      d.setDate(d.getDate() + diff);
+      document.getElementById('booking-date').value = formatDateObj(d);
+      selectedSlots = [];
+      renderTimeSlots();
     }
 
     // 從 Google Sheets 讀取最新預約資料
