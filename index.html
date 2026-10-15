@@ -33,8 +33,13 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
+  <!-- 全域提交標記變數 -->
+  <script>
+    window.submitted = false;
+  </script>
+
   <!-- 隱藏的 iframe 用於背景無縫提交表單 -->
-  <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;" onload="if(submitted){onCloudSubmitSuccess();}"></iframe>
+  <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;" onload="if(window.submitted){onCloudSubmitSuccess();}"></iframe>
 
   <!-- Header -->
   <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-30 no-print">
@@ -155,7 +160,7 @@
         <div id="time-slots-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"></div>
       </div>
 
-      <!-- Contact Info Form (背景無縫 Form 提交) -->
+      <!-- Contact Info Form -->
       <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
         <h3 class="font-bold text-slate-800 text-md flex items-center gap-2 mb-4">
           <i data-lucide="user-check" class="w-5 h-5 text-indigo-600"></i>
@@ -441,63 +446,60 @@
     let isAdminLoggedIn = false;
     let currentAdminViewMode = "weekly";
     let weeklyStartDate = new Date();
-    let submitted = false;
     let pendingBookingData = null;
 
     function showLoading(show) {
       document.getElementById('sync-loading').classList.toggle('hidden', !show);
     }
 
-    // 輔助解析：將雲端帶有空白、分號、逗號的 slots 轉成標準字串陣列
+    // 解析 slots，容錯相容分號、逗號或空白
     function parseSlots(slotsData) {
       if (Array.isArray(slotsData)) {
         return slotsData.map(s => String(s).trim());
       }
       if (typeof slotsData === 'string') {
-        return slotsData.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+        return slotsData.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
       }
       return [];
     }
 
     // 從 Google Sheets 讀取最新預約資料
- async function fetchCloudData() {
-  if (!GOOGLE_SCRIPT_URL) return;
-  showLoading(true);
-  try {
-    const cacheUrl = GOOGLE_SCRIPT_URL + (GOOGLE_SCRIPT_URL.includes('?') ? '&' : '?') + "t=" + Date.now();
-    const res = await fetch(cacheUrl);
-    const data = await res.json();
-    
-    // 除錯日誌 1：印出從雲端抓到的原始資料
-    console.log("【1. 雲端原始資料】:", data);
+    async function fetchCloudData() {
+      if (!GOOGLE_SCRIPT_URL) return;
+      showLoading(true);
+      try {
+        const cacheUrl = GOOGLE_SCRIPT_URL + (GOOGLE_SCRIPT_URL.includes('?') ? '&' : '?') + "t=" + Date.now();
+        const res = await fetch(cacheUrl);
+        const data = await res.json();
+        
+        console.log("【1. 雲端原始數據】:", data);
 
-    if (Array.isArray(data)) {
-      bookings = data.map(b => {
-        let cleanDate = String(b.date || '').trim();
-        if (cleanDate.includes('T')) {
-          cleanDate = cleanDate.split('T')[0];
+        if (Array.isArray(data)) {
+          bookings = data.map(b => {
+            let cleanDate = String(b.date || '').trim();
+            if (cleanDate.includes('T')) {
+              cleanDate = cleanDate.split('T')[0];
+            }
+            return {
+              ...b,
+              room: String(b.room || '').trim(),
+              date: cleanDate,
+              slots: parseSlots(b.slots)
+            };
+          });
+
+          console.log("【2. 解析後數據】:", bookings);
+          localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
         }
-        return {
-          ...b,
-          room: String(b.room || '').trim(),
-          date: cleanDate,
-          slots: parseSlots(b.slots)
-        };
-      });
-
-      // 除錯日誌 2：印出解析後的預約陣列
-      console.log("【2. 解析後數據】:", bookings);
-      localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
+      } catch (err) {
+        console.error("雲端讀取失敗:", err);
+      } finally {
+        showLoading(false);
+        refreshUI();
+      }
     }
-  } catch (err) {
-    console.error("【雲端讀取失敗】:", err);
-  } finally {
-    showLoading(false);
-    refreshUI();
-  }
-}
 
-    // 處理表單提交（觸發原生 Form 提交至隱藏 iframe）
+    // 處理表單提交
     function handleFormSubmit(e) {
       const dateVal = document.getElementById('booking-date').value;
       const name = document.getElementById('applicant-name').value.trim();
@@ -511,7 +513,6 @@
         return;
       }
 
-      // 填寫隱藏表單欄位
       const bookingId = "BK" + Date.now().toString().slice(-6);
       const createdAt = new Date().toISOString();
       const slotsStr = [...selectedSlots].sort().join(';');
@@ -537,13 +538,13 @@
       const form = document.getElementById('booking-form');
       form.action = GOOGLE_SCRIPT_URL;
 
-      submitted = true;
+      window.submitted = true;
       showLoading(true);
     }
 
     // iframe 背景完成寫入後的回調
     function onCloudSubmitSuccess() {
-      submitted = false;
+      window.submitted = false;
       showLoading(false);
 
       if (pendingBookingData) {
@@ -563,7 +564,6 @@
         document.getElementById('booking-form').reset();
         pendingBookingData = null;
         
-        // 自動重新帶入今日日期並更新可預約狀態
         initDate();
         setTimeout(fetchCloudData, 1000);
       }
@@ -1033,7 +1033,6 @@
       document.getElementById('modal-alert').classList.add('hidden');
     }
 
-    // 初始化日期並同步渲染時段按鈕
     function initDate() {
       const todayStr = getTodayDateString();
       const dateInput = document.getElementById('booking-date');
