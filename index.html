@@ -464,40 +464,49 @@
     }
 
     // 從 Google Sheets 讀取最新預約資料
-    async function fetchCloudData() {
-      if (!GOOGLE_SCRIPT_URL) return;
-      showLoading(true);
-      try {
-        const cacheUrl = GOOGLE_SCRIPT_URL + (GOOGLE_SCRIPT_URL.includes('?') ? '&' : '?') + "t=" + Date.now();
-        const res = await fetch(cacheUrl);
-        const data = await res.json();
-        
-        console.log("【1. 雲端原始數據】:", data);
+    // 從 Google Sheets 讀取最新預約資料
+async function fetchCloudData() {
+  if (!GOOGLE_SCRIPT_URL) return;
+  showLoading(true);
+  try {
+    const cacheUrl = GOOGLE_SCRIPT_URL + (GOOGLE_SCRIPT_URL.includes('?') ? '&' : '?') + "t=" + Date.now();
+    const res = await fetch(cacheUrl);
+    const data = await res.json();
+    
+    if (Array.isArray(data)) {
+      bookings = data.map(b => {
+        let cleanDate = String(b.date || '').trim();
 
-        if (Array.isArray(data)) {
-          bookings = data.map(b => {
-            let cleanDate = String(b.date || '').trim();
-            if (cleanDate.includes('T')) {
-              cleanDate = cleanDate.split('T')[0];
-            }
-            return {
-              ...b,
-              room: String(b.room || '').trim(),
-              date: cleanDate,
-              slots: parseSlots(b.slots)
-            };
-          });
-
-          console.log("【2. 解析後數據】:", bookings);
-          localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
+        // 核心修復：解析英文長日期 (如 "Thu Oct 15 2026 ...") 或 ISO 日期
+        if (cleanDate) {
+          const d = new Date(cleanDate);
+          if (!isNaN(d.getTime())) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            cleanDate = `${yyyy}-${mm}-${dd}`;
+          }
         }
-      } catch (err) {
-        console.error("雲端讀取失敗:", err);
-      } finally {
-        showLoading(false);
-        refreshUI();
-      }
+
+        return {
+          ...b,
+          room: String(b.room || '').trim(),
+          date: cleanDate,
+          slots: parseSlots(b.slots)
+        };
+      });
+
+      console.log("【解析後數據】:", bookings);
+      localStorage.setItem("ngo_room_bookings", JSON.stringify(bookings));
     }
+  } catch (err) {
+    console.error("雲端讀取失敗:", err);
+  } finally {
+    showLoading(false);
+    refreshUI();
+  }
+}
+
 
     // 處理表單提交
     function handleFormSubmit(e) {
