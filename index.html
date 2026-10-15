@@ -921,4 +921,100 @@
         const bSlots = Array.isArray(b.slots) ? b.slots : String(b.slots || '').split(';');
         const aTime = a.date + 'T' + (aSlots[0] ? aSlots[0].split('-')[0] : '00:00');
         const bTime = b.date + 'T' + (bSlots[0] ? bSlots[0].split('-')[0] : '00:00');
-        return new Date(
+        return new Date(bTime) - new Date(aTime);
+      });
+
+      document.getElementById('filtered-count-badge').innerText = `已篩選共 ${filtered.length} 項紀錄`;
+
+      const container = document.getElementById('admin-bookings-list');
+      container.innerHTML = '';
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs">無符合條件之預約紀錄</div>`;
+        return;
+      }
+
+      filtered.forEach(item => {
+        const slotsArr = Array.isArray(item.slots) ? item.slots : String(item.slots || '').split(';');
+        const card = document.createElement('div');
+        card.className = "p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-200 transition-all shadow-sm space-y-2";
+        card.innerHTML = `
+          <div class="flex justify-between items-start flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-sm text-slate-800">${item.room}</span>
+              <span class="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                <i data-lucide="calendar" class="w-3 h-3"></i> ${item.date}
+              </span>
+            </div>
+            <div class="flex items-center gap-2 no-print">
+              <a href="tel:${item.phone}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors">
+                <i data-lucide="phone" class="w-3 h-3"></i> 致電
+              </a>
+            </div>
+          </div>
+          <div class="text-xs text-slate-600 grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+            <p><strong class="text-slate-800">時段：</strong> <span class="font-semibold text-indigo-700">${slotsArr.join(', ')}</span></p>
+            <p><strong class="text-slate-800">申請人：</strong> ${item.name} (${item.phone}) | <strong>機構：</strong> ${item.org}</p>
+            <p class="md:col-span-2"><strong class="text-slate-800">用途：</strong> ${item.purpose}</p>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    function updateAdminStats() {
+      const today = getTodayDateString();
+      document.getElementById('stat-total').innerText = bookings.length;
+      document.getElementById('stat-today').innerText = bookings.filter(b => b.date === today).length;
+      document.getElementById('stat-hall').innerText = bookings.filter(b => b.room === '大廳').length;
+      document.getElementById('stat-room').innerText = bookings.filter(b => b.room === '活動室').length;
+    }
+
+    function exportToCSV() {
+      if (bookings.length === 0) {
+        showAlertModal("目前無任何預約數據可供匯出。");
+        return;
+      }
+      let csv = "\uFEFF預約編號,房間,預約日期,預約時段,申請人姓名,聯絡電話,機構/團體,活動用途,建立時間\n";
+      bookings.forEach(b => {
+        const slotsArr = Array.isArray(b.slots) ? b.slots : String(b.slots || '').split(';');
+        csv += `"${b.id}","${b.room}","${b.date}","${slotsArr.join(';')}","${b.name}","${b.phone}","${b.org}","${b.purpose}","${b.createdAt}"\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `CDP_Room_Bookings_${getTodayDateString()}.csv`;
+      link.click();
+    }
+
+    function showAlertModal(msg) {
+      document.getElementById('alert-title').innerText = "提示";
+      document.getElementById('alert-message').innerText = msg;
+      document.getElementById('alert-actions').innerHTML = `<button onclick="closeAlertModal()" class="w-full py-2.5 bg-indigo-600 text-white text-xs font-semibold rounded-xl">確定</button>`;
+      document.getElementById('modal-alert').classList.remove('hidden');
+    }
+
+    function closeAlertModal() {
+      document.getElementById('modal-alert').classList.add('hidden');
+    }
+
+    // 關鍵修復：初始化日期並同步渲染時段按鈕
+    function initDate() {
+      const todayStr = getTodayDateString();
+      const dateInput = document.getElementById('booking-date');
+      if (dateInput) {
+        dateInput.value = todayStr;
+        dateInput.min = todayStr;
+      }
+      renderTimeSlots();
+    }
+
+    window.onload = () => {
+      initDate();
+      fetchCloudData();
+      lucide.createIcons();
+    };
+  </script>
+</body>
+</html>
